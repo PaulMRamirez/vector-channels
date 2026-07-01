@@ -21,7 +21,9 @@ const useStore = createVectorChannelsStore({
   primaryVar: 'battery',
   widthVar: 'slope',
   widthInvert: true,
-  channels: ['cpu', 'wheel', 'databuf', 'solar'],
+  // Start with no channels so the initial view is uncluttered — the user adds
+  // channels from the sidebar as they want to correlate more variables.
+  channels: [],
   alerts: ['battery'],
   stateOverlay: false,
   showEvents: true,
