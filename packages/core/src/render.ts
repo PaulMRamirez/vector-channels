@@ -175,14 +175,14 @@ export const ALERT_BASE_WIDTH = 3.5;
 // cross at tight hairpins. The convex side is never clamped.
 export const ALERT_CURVE_SAFETY = 0.65;
 
-// Minimum clearance an inside flank must keep beyond the fill edge to be drawn
-// at all. At a hairpin the clamped inside offset drops toward the fill; once it
-// can't clear the fill by this margin there's no room for a distinct flank, so
-// the inside edge is suppressed for those vertices and the outside flank carries
-// the signal. Set to a full alert-stroke width (not half) so the flank drops out
-// across the whole crowded apex rather than lingering as a stub just above the
-// fill.
-export const ALERT_INSIDE_MIN_CLEARANCE = ALERT_BASE_WIDTH;
+// How much of the nominal band gap the inside flank must retain to be drawn at
+// all. At a hairpin the clamped inside offset drops toward the fill; once it
+// falls to this fraction of the nominal offset there's no room for a distinct
+// flank, so it's suppressed for those vertices and the outside flank carries the
+// signal. MUST be < 1 so straight sections (where the offset is nominal) always
+// keep both flanks; the value trades a wider drop-out (cleaner apex) against
+// keeping the inside flank deeper into gentle turns.
+export const ALERT_INSIDE_CLEARANCE_FRACTION = 0.85;
 
 // Erosion radius (in vertices) applied to the inside-flank "ok" mask. Curvature
 // is estimated per vertex and can flicker across the threshold near an apex,
@@ -299,6 +299,10 @@ export function drawPrimaryChannel(
   const gap = alertGapPx ?? 1.5;
   const widthScale = alertWidthScale ?? 1;
   const alertPad = gap + ALERT_BASE_WIDTH / 2;
+  // Minimum clearance beyond the fill an inside flank needs to be drawn. Kept a
+  // fraction of the nominal pad so it can never exceed it — otherwise straight
+  // sections (offset == nominal) would suppress the flank everywhere.
+  const insideClearance = alertPad * ALERT_INSIDE_CLEARANCE_FRACTION;
   const minAlertOffset = alertMinOffsetPx ?? 0;
   const watches = alertWatches ?? [];
   const hasAlerts = watches.length > 0;
@@ -331,8 +335,8 @@ export function drawPrimaryChannel(
       Rout![i] = { x: px - -ty * hoR, y: py - tx * hoR };
       // A flank is only drawn where it clears the fill; at the tightest part of
       // a hairpin the inside one drops out so it can't pinch into a notch.
-      LoutOk![i] = hoL >= hw + ALERT_INSIDE_MIN_CLEARANCE;
-      RoutOk![i] = hoR >= hw + ALERT_INSIDE_MIN_CLEARANCE;
+      LoutOk![i] = hoL >= hw + insideClearance;
+      RoutOk![i] = hoR >= hw + insideClearance;
     }
   }
 
