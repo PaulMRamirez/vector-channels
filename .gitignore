@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+coverage/
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/settings.recommended.json
+.env
+.env.local
+*.log
+pnpm-debug.log*

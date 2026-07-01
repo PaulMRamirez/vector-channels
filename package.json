@@ -1,0 +1,26 @@
+{
+  "name": "vector-channels",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Spatial multivariate trajectory visualization — a correlator between MMGIS and PlanDev",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PaulMRamirez/vector-channels.git"
+  },
+  "engines": {
+    "node": ">=22.20.0",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@9.12.0",
+  "scripts": {
+    "dev": "pnpm --filter @vector-channels/standalone-app dev",
+    "build": "pnpm --filter '@vector-channels/*' build",
+    "test": "pnpm --filter '@vector-channels/*' test",
+    "typecheck": "pnpm --filter '@vector-channels/*' typecheck",
+    "clean": "pnpm --filter '@vector-channels/*' --parallel exec rm -rf dist node_modules .turbo"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.2"
+  }
+}
