@@ -82,6 +82,28 @@ describe('computeAlertFlanks', () => {
     expect(Math.abs(apex - first - (last - apex))).toBeLessThanOrEqual(1);
   });
 
+  it('suppresses cleanly with asymmetric leg widths (faithful to data, no stubs)', () => {
+    const { points } = hairpin(7);
+    // Realistic asymmetric telemetry: the two legs have different widths, so the
+    // width-aware gate drops the flank differently on each side. That is correct
+    // — but it must still be one clean span, not a fragmented set of stubs.
+    const mid = Math.floor(points.length / 2);
+    const widths = points.map((_, i) => (i < mid ? 4 : 10));
+    const f = computeAlertFlanks(points, computeTangents(points), widths, {
+      alertPad: ALERT_PAD,
+      minAlertOffset: 0,
+    });
+
+    expect(f.rightOk.every(Boolean)).toBe(true); // outside flank intact
+    expect(f.leftOk[0]).toBe(true); // tails still draw the flank
+    expect(f.leftOk[f.leftOk.length - 1]).toBe(true);
+
+    const gap = suppressed(f.leftOk);
+    expect(gap.length).toBeGreaterThan(0);
+    // Contiguous span => a single clean drop-out, even though it is asymmetric.
+    expect(gap[gap.length - 1] - gap[0] + 1).toBe(gap.length);
+  });
+
   it('handles a turn of either handedness (mirror suppresses the other flank)', () => {
     const { points, apex } = hairpin(8, true); // clockwise: right is inside
     const f = computeAlertFlanks(points, computeTangents(points), constWidths(points.length), {

@@ -88,6 +88,19 @@ Four options considered:
 
 Option 2 chosen because it preserves the single-view concept, extends the channels metaphor (stations on a line), doesn't lie geometrically, and aligns with the spatial-correlator scope decision: bubble shows aggregate; click opens the proper temporal tool.
 
+### Alert band at tight turns and low zoom
+
+The alert band flanks the primary with two thin strokes offset a fixed pixel distance along the path normal. A fixed offset self-intersects on the concave side of a bend once it exceeds the local radius of curvature, and scatters when the path is densely sampled relative to screen scale. Both worsen as you zoom out (the feature shrinks in pixels while the offset stays constant). The handling, in `core` (`geometry.ts`, `render.ts`):
+
+1. **Concave-side curvature clamp** (`ALERT_CURVE_SAFETY`, 0.65). The inside flank's offset is capped at a fraction of the local radius so it can't fold; the convex side keeps full offset. `localCurvature` estimates radius and concave side from the tangent turn-rate; signed, so left and right turns are handled symmetrically.
+2. **Inside-flank suppression** (`ALERT_INSIDE_CLEARANCE_FRACTION`, 0.85). Where the clamped inside offset can't clear the fill, that flank is dropped for those vertices, so the band degrades from double- to single-flanked around a hairpin apex instead of pinching into a notch. The fraction MUST be < 1 or straight sections (offset == nominal) suppress the flank everywhere — a bug that once hid the whole band. `computeAlertFlanks` is the pure, tested function that produces the offsets and per-side draw masks.
+3. **Mask erosion** (`ALERT_INSIDE_ERODE`, 1). Drops isolated one-vertex flank pokes left by per-vertex curvature flicker, keeping the drop-out boundaries clean.
+4. **Adaptive tangent window** (`computeTangents` `minSpanPx`, 6). The window expands until its endpoints span a minimum pixel distance, so a densely-sampled (zoomed-out) path can't yield sub-pixel-noise tangents that scatter the offset into detached fragments. High zoom is unchanged.
+
+**Width-aware, not forced-symmetric.** The suppression gate depends on the local fill width, so with asymmetric telemetry (legs of different width — the realistic case) the drop-out is proportionally asymmetric. This is deliberate: it faithfully reflects the data rather than imposing a cosmetic symmetry that would draw a flank over a wider leg's fill. Tests assert the gate is unbiased on symmetric input (shut-off and pick-up equidistant from the apex), symmetric across handedness, and still produces a single clean drop-out on asymmetric widths.
+
+**Known limitation.** At extreme zoom-out a fixed-pixel band still crowds a sub-band-width feature; the complete answer is zoom-aware level-of-detail (fade or hide the band below a scale threshold, or draw the alert on the primary itself). Deferred until it matters — the clamp, suppression, and tangent stabilization remove the ugly failures (folds and scatter) across the normal zoom range.
+
 ## Technical choices
 
 ### Why Leaflet (not Mapbox GL, OpenLayers, or deck.gl)
