@@ -179,9 +179,16 @@ export const ALERT_CURVE_SAFETY = 0.65;
 // at all. At a hairpin the clamped inside offset drops toward the fill; once it
 // can't clear the fill by this margin there's no room for a distinct flank, so
 // the inside edge is suppressed for those vertices and the outside flank carries
-// the signal. Sized to the alert stroke's half-width so a drawn flank never
-// overlaps the fill.
-export const ALERT_INSIDE_MIN_CLEARANCE = ALERT_BASE_WIDTH / 2;
+// the signal. Set to a full alert-stroke width (not half) so the flank drops out
+// across the whole crowded apex rather than lingering as a stub just above the
+// fill.
+export const ALERT_INSIDE_MIN_CLEARANCE = ALERT_BASE_WIDTH;
+
+// Erosion radius (in vertices) applied to the inside-flank "ok" mask. Curvature
+// is estimated per vertex and can flicker across the threshold near an apex,
+// leaving isolated one-vertex pokes; eroding the mask by this radius drops any
+// ok vertex adjacent to a suppressed one so gaps stay clean.
+const ALERT_INSIDE_ERODE = 1;
 
 /**
  * Worst limit status across the watched variables at a given sample. Critical
@@ -202,6 +209,28 @@ function worstAlertStatus(
     if (s === 'warn') worst = 'warn';
   }
   return worst;
+}
+
+/**
+ * Erode a boolean mask in place: a vertex stays true only if it and every
+ * vertex within `radius` is true. Used to drop isolated one-vertex flank pokes
+ * left by per-vertex curvature flicker near an apex.
+ */
+function erodeMask(mask: boolean[], radius: number): void {
+  if (radius < 1) return;
+  const src = mask.slice();
+  const n = mask.length;
+  for (let i = 0; i < n; i++) {
+    if (!src[i]) continue;
+    const lo = Math.max(0, i - radius);
+    const hi = Math.min(n - 1, i + radius);
+    for (let j = lo; j <= hi; j++) {
+      if (!src[j]) {
+        mask[i] = false;
+        break;
+      }
+    }
+  }
 }
 
 /**
@@ -305,6 +334,11 @@ export function drawPrimaryChannel(
       LoutOk![i] = hoL >= hw + ALERT_INSIDE_MIN_CLEARANCE;
       RoutOk![i] = hoR >= hw + ALERT_INSIDE_MIN_CLEARANCE;
     }
+  }
+
+  if (hasAlerts) {
+    erodeMask(LoutOk!, ALERT_INSIDE_ERODE);
+    erodeMask(RoutOk!, ALERT_INSIDE_ERODE);
   }
 
   // Fill quads

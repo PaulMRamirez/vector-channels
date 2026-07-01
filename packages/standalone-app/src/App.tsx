@@ -162,9 +162,6 @@ export function App(): JSX.Element {
     <div className="flex flex-col h-screen bg-slate-950 text-slate-100">
       <header className="flex items-center gap-3 px-4 py-2 border-b border-slate-800 text-sm">
         <span className="font-semibold tracking-wide">Vector Channels</span>
-        <span className="text-slate-500">
-          Jezero Crater — synthetic sol demo
-        </span>
       </header>
       <div className="flex flex-1 min-h-0">
         <div className="flex-1 relative">
