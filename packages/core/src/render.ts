@@ -9,7 +9,7 @@ import {
   normalize,
   toRgbStr,
 } from './color.js';
-import { offsetPolyline } from './geometry.js';
+import { clampOffsetToCurvature, localCurvature, offsetPolyline } from './geometry.js';
 import type {
   EventGlyphType,
   ModeDef,
@@ -169,6 +169,12 @@ export interface PrimaryChannelArgs {
 // shift the band geometrically.
 export const ALERT_BASE_WIDTH = 3.5;
 
+// Fraction of the local radius of curvature the alert band's offset is allowed
+// to reach on the concave (inside) side of a turn. Below 1 the band stops short
+// of the fold point; ~0.65 keeps a small margin so the two offset edges never
+// cross at tight hairpins. The convex side is never clamped.
+export const ALERT_CURVE_SAFETY = 0.65;
+
 /**
  * Worst limit status across the watched variables at a given sample. Critical
  * short-circuits warn; warn beats nominal. Variables with null values at the
@@ -234,6 +240,8 @@ export function drawPrimaryChannel(
   const R: ScreenPoint[] = new Array(n);
   const Lout: ScreenPoint[] | null = hasAlerts ? new Array(n) : null;
   const Rout: ScreenPoint[] | null = hasAlerts ? new Array(n) : null;
+  // Curvature is only needed to keep the alert band from folding at tight turns.
+  const curvature = hasAlerts ? localCurvature(points, tangents) : null;
   for (let i = 0; i < n; i++) {
     const [tx, ty] = tangents[i];
     const hw = widths[i] / 2;
@@ -243,8 +251,12 @@ export function drawPrimaryChannel(
     R[i] = { x: px - -ty * hw, y: py - tx * hw };
     if (hasAlerts) {
       const ho = Math.max(hw + alertPad, minAlertOffset);
-      Lout![i] = { x: px + -ty * ho, y: py + tx * ho };
-      Rout![i] = { x: px - -ty * ho, y: py - tx * ho };
+      // Clamp each side independently: at a bend the inside edge is pulled in
+      // so it can't cross the fill or itself, while the outside keeps full offset.
+      const hoL = clampOffsetToCurvature(ho, 1, curvature![i], ALERT_CURVE_SAFETY);
+      const hoR = clampOffsetToCurvature(ho, -1, curvature![i], ALERT_CURVE_SAFETY);
+      Lout![i] = { x: px + -ty * hoL, y: py + tx * hoL };
+      Rout![i] = { x: px - -ty * hoR, y: py - tx * hoR };
     }
   }
 

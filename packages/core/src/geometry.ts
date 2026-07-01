@@ -94,6 +94,77 @@ export function smoothWaypoints(
 }
 
 /**
+ * Local curvature at each vertex, used to keep fixed perpendicular offsets from
+ * folding back on themselves at tight turns (a fixed offset d self-intersects on
+ * the concave side once d exceeds the radius of curvature r).
+ */
+export interface LocalCurvature {
+  /** Radius of curvature in point (screen-pixel) units; Infinity on straight runs. */
+  radius: number;
+  /**
+   * Which side is the inside of the bend: +1 if the left (+normal) side is
+   * concave, -1 if the right side is, 0 if the run is effectively straight.
+   * "Left" matches offsetPolyline's convention: the left-perpendicular of a
+   * tangent (tx, ty) is (-ty, tx).
+   */
+  concaveSide: -1 | 0 | 1;
+}
+
+/**
+ * Estimate per-vertex radius of curvature and concave side from the tangent
+ * turn-rate over a one-vertex window. For a circle of radius R this returns
+ * ~R; for a straight segment it returns Infinity. Pure and O(n).
+ */
+export function localCurvature(
+  points: ScreenPoint[],
+  tangents: Array<[number, number]>,
+): LocalCurvature[] {
+  const n = points.length;
+  const out: LocalCurvature[] = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const a = Math.max(0, i - 1);
+    const b = Math.min(n - 1, i + 1);
+    // Change in the (unit) tangent over the window approximates dT; its
+    // magnitude over the arc length ds gives curvature, and its direction
+    // points toward the center of curvature (the concave side).
+    const dtx = tangents[b][0] - tangents[a][0];
+    const dty = tangents[b][1] - tangents[a][1];
+    const dTmag = Math.hypot(dtx, dty);
+    const ds = Math.hypot(points[b].x - points[a].x, points[b].y - points[a].y);
+    if (dTmag < 1e-6 || ds < 1e-9) {
+      out[i] = { radius: Infinity, concaveSide: 0 };
+      continue;
+    }
+    const [tx, ty] = tangents[i];
+    // Left normal (matches offsetPolyline). dT · n > 0 => the left side is inside.
+    const dot = dtx * -ty + dty * tx;
+    out[i] = {
+      radius: ds / dTmag,
+      concaveSide: dot > 0 ? 1 : dot < 0 ? -1 : 0,
+    };
+  }
+  return out;
+}
+
+/**
+ * Clamp an offset magnitude so a fixed perpendicular offset never folds at a
+ * tight turn. `side` is +1 for the left (+normal) offset, -1 for the right. The
+ * magnitude is only reduced when the offset sits on the concave (inside) side of
+ * the bend, and only down to `safety` × radius; the convex side and straight
+ * runs are returned unchanged.
+ */
+export function clampOffsetToCurvature(
+  mag: number,
+  side: -1 | 1,
+  curv: LocalCurvature,
+  safety = 0.65,
+): number {
+  if (curv.concaveSide !== side) return mag;
+  if (!Number.isFinite(curv.radius)) return mag;
+  return Math.min(mag, safety * curv.radius);
+}
+
+/**
  * Compute perpendicular offset points for a polyline at a given pixel offset.
  * Positive offset is to the left of the travel direction in screen space
  * (following canvas's y-down convention, the left-perpendicular of (tx, ty)
