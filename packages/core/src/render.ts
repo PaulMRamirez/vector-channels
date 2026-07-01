@@ -264,6 +264,78 @@ function strokeEdgeRun(
   if (penDown) ctx.stroke();
 }
 
+export interface AlertFlankParams {
+  /** Nominal gap from the fill edge to the band centerline (gap + base/2). */
+  alertPad: number;
+  /** Floor on the band's distance from the centerline (to clear channels). */
+  minAlertOffset: number;
+  /** Concave-side curvature clamp fraction. Defaults to ALERT_CURVE_SAFETY. */
+  safety?: number;
+  /** Fraction of alertPad an inside flank must retain to be drawn. Defaults to ALERT_INSIDE_CLEARANCE_FRACTION. */
+  clearanceFraction?: number;
+  /** Erosion radius applied to the ok masks. Defaults to ALERT_INSIDE_ERODE. */
+  erode?: number;
+}
+
+export interface AlertFlanks {
+  /** Per-vertex clamped offset magnitude for the left flank. */
+  hoL: number[];
+  /** Per-vertex clamped offset magnitude for the right flank. */
+  hoR: number[];
+  /** Whether the left flank is drawn at each vertex (false = suppressed). */
+  leftOk: boolean[];
+  /** Whether the right flank is drawn at each vertex. */
+  rightOk: boolean[];
+}
+
+/**
+ * Pure geometry of the alert band's two flanks: the curvature-clamped offset on
+ * each side plus a per-vertex "draw this flank here?" mask. The mask suppresses
+ * the inside flank where a tight turn leaves no room for it to clear the fill,
+ * so the band degrades from double- to single-flanked around a hairpin apex
+ * instead of pinching. Signed by curvature, so left and right turns are handled
+ * symmetrically. Extracted from drawPrimaryChannel so the behavior is testable
+ * without a canvas.
+ */
+export function computeAlertFlanks(
+  points: ScreenPoint[],
+  tangents: Array<[number, number]>,
+  widths: number[],
+  params: AlertFlankParams,
+): AlertFlanks {
+  const n = points.length;
+  const safety = params.safety ?? ALERT_CURVE_SAFETY;
+  const clearanceFraction =
+    params.clearanceFraction ?? ALERT_INSIDE_CLEARANCE_FRACTION;
+  const erode = params.erode ?? ALERT_INSIDE_ERODE;
+  const insideClearance = params.alertPad * clearanceFraction;
+  const curvature = localCurvature(points, tangents);
+  const hoL = new Array<number>(n);
+  const hoR = new Array<number>(n);
+  const leftOk = new Array<boolean>(n);
+  const rightOk = new Array<boolean>(n);
+  for (let i = 0; i < n; i++) {
+    const hw = widths[i] / 2;
+    const ho = Math.max(hw + params.alertPad, params.minAlertOffset);
+    // Clamp each side independently: at a bend the inside edge is pulled in so
+    // it can't cross the fill or itself, while the outside keeps full offset.
+    const l = clampOffsetToCurvature(ho, 1, curvature[i], safety);
+    const r = clampOffsetToCurvature(ho, -1, curvature[i], safety);
+    hoL[i] = l;
+    hoR[i] = r;
+    // A flank is only drawn where it clears the fill; at the tightest part of a
+    // hairpin the inside one drops out so it can't pinch into a notch.
+    leftOk[i] = l >= hw + insideClearance;
+    rightOk[i] = r >= hw + insideClearance;
+  }
+  // Eroding the mask (symmetrically) drops isolated one-vertex pokes left by
+  // per-vertex curvature flicker, keeping the shut-off and pick-up boundaries
+  // clean and — for a symmetric turn — equidistant from the apex.
+  erodeMask(leftOk, erode);
+  erodeMask(rightOk, erode);
+  return { hoL, hoR, leftOk, rightOk };
+}
+
 /**
  * Draw the primary channel as a filled polygon strip with per-segment color,
  * then stroke the alert band.
@@ -302,22 +374,21 @@ export function drawPrimaryChannel(
   // Minimum clearance beyond the fill an inside flank needs to be drawn. Kept a
   // fraction of the nominal pad so it can never exceed it — otherwise straight
   // sections (offset == nominal) would suppress the flank everywhere.
-  const insideClearance = alertPad * ALERT_INSIDE_CLEARANCE_FRACTION;
   const minAlertOffset = alertMinOffsetPx ?? 0;
   const watches = alertWatches ?? [];
   const hasAlerts = watches.length > 0;
+
+  // Alert-flank geometry (offsets + per-side draw masks) is a pure function of
+  // the path, widths, and offset params — computed and tested separately.
+  const flanks = hasAlerts
+    ? computeAlertFlanks(points, tangents, widths, { alertPad, minAlertOffset })
+    : null;
 
   // Compute fill edges; only compute alert-band edges if we'll render them.
   const L: ScreenPoint[] = new Array(n);
   const R: ScreenPoint[] = new Array(n);
   const Lout: ScreenPoint[] | null = hasAlerts ? new Array(n) : null;
   const Rout: ScreenPoint[] | null = hasAlerts ? new Array(n) : null;
-  // Per-vertex flags: is there room for a distinct inside flank here? A false
-  // entry means the turn is too tight and that flank is skipped at that vertex.
-  const LoutOk: boolean[] | null = hasAlerts ? new Array(n) : null;
-  const RoutOk: boolean[] | null = hasAlerts ? new Array(n) : null;
-  // Curvature is only needed to keep the alert band from folding at tight turns.
-  const curvature = hasAlerts ? localCurvature(points, tangents) : null;
   for (let i = 0; i < n; i++) {
     const [tx, ty] = tangents[i];
     const hw = widths[i] / 2;
@@ -326,23 +397,11 @@ export function drawPrimaryChannel(
     L[i] = { x: px + -ty * hw, y: py + tx * hw };
     R[i] = { x: px - -ty * hw, y: py - tx * hw };
     if (hasAlerts) {
-      const ho = Math.max(hw + alertPad, minAlertOffset);
-      // Clamp each side independently: at a bend the inside edge is pulled in
-      // so it can't cross the fill or itself, while the outside keeps full offset.
-      const hoL = clampOffsetToCurvature(ho, 1, curvature![i], ALERT_CURVE_SAFETY);
-      const hoR = clampOffsetToCurvature(ho, -1, curvature![i], ALERT_CURVE_SAFETY);
+      const hoL = flanks!.hoL[i];
+      const hoR = flanks!.hoR[i];
       Lout![i] = { x: px + -ty * hoL, y: py + tx * hoL };
       Rout![i] = { x: px - -ty * hoR, y: py - tx * hoR };
-      // A flank is only drawn where it clears the fill; at the tightest part of
-      // a hairpin the inside one drops out so it can't pinch into a notch.
-      LoutOk![i] = hoL >= hw + insideClearance;
-      RoutOk![i] = hoR >= hw + insideClearance;
     }
-  }
-
-  if (hasAlerts) {
-    erodeMask(LoutOk!, ALERT_INSIDE_ERODE);
-    erodeMask(RoutOk!, ALERT_INSIDE_ERODE);
   }
 
   // Fill quads
@@ -410,8 +469,8 @@ export function drawPrimaryChannel(
     const style = ALERT_STYLES[run.status];
     ctx.strokeStyle = style.color;
     ctx.lineWidth = style.width * widthScale;
-    strokeEdgeRun(ctx, Lout!, LoutOk!, run.start, run.end);
-    strokeEdgeRun(ctx, Rout!, RoutOk!, run.start, run.end);
+    strokeEdgeRun(ctx, Lout!, flanks!.leftOk, run.start, run.end);
+    strokeEdgeRun(ctx, Rout!, flanks!.rightOk, run.start, run.end);
   }
 }
 
