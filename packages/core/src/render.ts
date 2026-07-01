@@ -175,6 +175,14 @@ export const ALERT_BASE_WIDTH = 3.5;
 // cross at tight hairpins. The convex side is never clamped.
 export const ALERT_CURVE_SAFETY = 0.65;
 
+// Minimum clearance an inside flank must keep beyond the fill edge to be drawn
+// at all. At a hairpin the clamped inside offset drops toward the fill; once it
+// can't clear the fill by this margin there's no room for a distinct flank, so
+// the inside edge is suppressed for those vertices and the outside flank carries
+// the signal. Sized to the alert stroke's half-width so a drawn flank never
+// overlaps the fill.
+export const ALERT_INSIDE_MIN_CLEARANCE = ALERT_BASE_WIDTH / 2;
+
 /**
  * Worst limit status across the watched variables at a given sample. Critical
  * short-circuits warn; warn beats nominal. Variables with null values at the
@@ -194,6 +202,37 @@ function worstAlertStatus(
     if (s === 'warn') worst = 'warn';
   }
   return worst;
+}
+
+/**
+ * Stroke one alert-band edge across a run of segments, breaking the path at any
+ * vertex flagged not-ok (an inside flank suppressed at a tight turn). Each
+ * contiguous ok span is stroked as its own subpath so round caps close the gaps
+ * cleanly. Vertices span `start`..`end + 1` since the run indexes segments.
+ */
+function strokeEdgeRun(
+  ctx: CanvasRenderingContext2D,
+  edge: ScreenPoint[],
+  ok: boolean[],
+  start: number,
+  end: number,
+): void {
+  let penDown = false;
+  for (let i = start; i <= end + 1; i++) {
+    if (ok[i]) {
+      if (!penDown) {
+        ctx.beginPath();
+        ctx.moveTo(edge[i].x, edge[i].y);
+        penDown = true;
+      } else {
+        ctx.lineTo(edge[i].x, edge[i].y);
+      }
+    } else if (penDown) {
+      ctx.stroke();
+      penDown = false;
+    }
+  }
+  if (penDown) ctx.stroke();
 }
 
 /**
@@ -240,6 +279,10 @@ export function drawPrimaryChannel(
   const R: ScreenPoint[] = new Array(n);
   const Lout: ScreenPoint[] | null = hasAlerts ? new Array(n) : null;
   const Rout: ScreenPoint[] | null = hasAlerts ? new Array(n) : null;
+  // Per-vertex flags: is there room for a distinct inside flank here? A false
+  // entry means the turn is too tight and that flank is skipped at that vertex.
+  const LoutOk: boolean[] | null = hasAlerts ? new Array(n) : null;
+  const RoutOk: boolean[] | null = hasAlerts ? new Array(n) : null;
   // Curvature is only needed to keep the alert band from folding at tight turns.
   const curvature = hasAlerts ? localCurvature(points, tangents) : null;
   for (let i = 0; i < n; i++) {
@@ -257,6 +300,10 @@ export function drawPrimaryChannel(
       const hoR = clampOffsetToCurvature(ho, -1, curvature![i], ALERT_CURVE_SAFETY);
       Lout![i] = { x: px + -ty * hoL, y: py + tx * hoL };
       Rout![i] = { x: px - -ty * hoR, y: py - tx * hoR };
+      // A flank is only drawn where it clears the fill; at the tightest part of
+      // a hairpin the inside one drops out so it can't pinch into a notch.
+      LoutOk![i] = hoL >= hw + ALERT_INSIDE_MIN_CLEARANCE;
+      RoutOk![i] = hoR >= hw + ALERT_INSIDE_MIN_CLEARANCE;
     }
   }
 
@@ -325,20 +372,8 @@ export function drawPrimaryChannel(
     const style = ALERT_STYLES[run.status];
     ctx.strokeStyle = style.color;
     ctx.lineWidth = style.width * widthScale;
-    // L edge
-    ctx.beginPath();
-    ctx.moveTo(Lout![run.start].x, Lout![run.start].y);
-    for (let i = run.start; i <= run.end; i++) {
-      ctx.lineTo(Lout![i + 1].x, Lout![i + 1].y);
-    }
-    ctx.stroke();
-    // R edge
-    ctx.beginPath();
-    ctx.moveTo(Rout![run.start].x, Rout![run.start].y);
-    for (let i = run.start; i <= run.end; i++) {
-      ctx.lineTo(Rout![i + 1].x, Rout![i + 1].y);
-    }
-    ctx.stroke();
+    strokeEdgeRun(ctx, Lout!, LoutOk!, run.start, run.end);
+    strokeEdgeRun(ctx, Rout!, RoutOk!, run.start, run.end);
   }
 }
 
