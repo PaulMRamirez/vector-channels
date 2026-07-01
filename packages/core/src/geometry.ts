@@ -8,17 +8,33 @@ import type { ScreenPoint } from './types.js';
  * finite difference. Window size controls smoothing — larger windows give more
  * stable offsets but lag at sharp turns.
  *
+ * The window starts at ±`windowSize` samples but expands outward until its
+ * endpoints span at least `minSpanPx` pixels. This keeps tangents stable when
+ * the path is densely sampled relative to screen scale (e.g., zoomed out), where
+ * a fixed sample window would span a sub-pixel distance and yield noisy
+ * directions — which in turn scatter any perpendicular offset built from them.
+ * At high zoom the samples already span more than `minSpanPx`, so the window
+ * stays at its base size and behavior is unchanged.
+ *
  * Returned as [tx, ty] pairs matching the input point array length.
  */
 export function computeTangents(
   points: ScreenPoint[],
-  windowSize = 3
+  windowSize = 3,
+  minSpanPx = 6
 ): Array<[number, number]> {
   const n = points.length;
   const tangents: Array<[number, number]> = new Array(n);
   for (let i = 0; i < n; i++) {
-    const a = Math.max(0, i - windowSize);
-    const b = Math.min(n - 1, i + windowSize);
+    let a = Math.max(0, i - windowSize);
+    let b = Math.min(n - 1, i + windowSize);
+    while (
+      (a > 0 || b < n - 1) &&
+      Math.hypot(points[b].x - points[a].x, points[b].y - points[a].y) < minSpanPx
+    ) {
+      if (a > 0) a--;
+      if (b < n - 1) b++;
+    }
     const dx = points[b].x - points[a].x;
     const dy = points[b].y - points[a].y;
     const m = Math.hypot(dx, dy) || 1;
