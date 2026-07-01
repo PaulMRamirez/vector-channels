@@ -106,6 +106,20 @@ Canvas gives us:
 
 SVG would give hit-testing for free but at 10,000+ DOM nodes it tanks performance. WebGL gives speed at implementation complexity disproportionate to the visual demands. If rendering bottlenecks at scale, the escape hatch is OffscreenCanvas in a Worker, not a WebGL rewrite.
 
+### Rendering backend abstraction: deferred
+
+We considered introducing a `RenderBackend` interface so the draw layer could target Canvas 2D or WebGL interchangeably. Decision: **do not build it now.** Keep the concrete `CanvasRenderingContext2D` in the draw functions.
+
+Rationale:
+- **The valuable separation already exists.** `core` splits cleanly into a *compute* layer (pure, backend-agnostic: `geometry.ts`, `color.ts`, and the value/mode caching + orchestration in `renderer.ts`) and a *draw* layer (`render.ts`, tightly Canvas-coupled by design). A WebGL backend would reuse the entire compute layer unchanged. That split is the hard part, and it's done.
+- **The draw layer is Canvas-idiomatic on purpose, not by accident.** The 256-bucket grouping in `drawChannel` and the same-status run-grouping in `drawPrimaryChannel` are optimizations against Canvas's cost model (state changes expensive, draw calls cheap; round cap at every `moveTo`). WebGL inverts that model — those routines would be *replaced* with vertex buffers / triangle strips, not adapted. So abstracting the current draw calls behind an interface would abstract the wrong layer.
+- **Speculative generality.** Designing a backend interface without a real second implementation to validate it against almost guarantees getting the seam wrong. Contradicts principle 5 (iterate on design before implementing) — a backend interface is itself a non-trivial design change and should follow a demonstrated need, not precede it.
+- **WebGL is two escape hatches away.** Order of response to a measured performance problem is: (1) sample decimation / LOD, (2) OffscreenCanvas in a Worker, (3) WebGL. Abstracting now optimizes for a branch we may never take.
+
+**The seam we maintain instead:** the compute/draw boundary. Discipline to preserve — no color, geometry, or status math leaks into the `draw*` functions; they receive already-computed screen points, colors, widths, and statuses. As long as that holds, the pure layer stays reusable and a future WebGL backend is an additive parallel implementation, not a teardown.
+
+**Revisit when** profiling at realistic data scale (the open v0.4 question in the Open questions section below) shows Canvas is GPU/geometry-throughput bound *after* decimation and a Worker, or when a fleet view (many trajectories at once) or smooth animated zoom over 100k+ primitives becomes a requirement. At that point, introduce the backend interface against the concrete needs of the WebGL implementation being written, not before.
+
 ### Why pnpm workspaces
 
 Monorepo tooling with first-class support for local package linking, without the complexity of Nx or Turborepo for a project this size. AMMOS's SLIM-based best practices and Aerie-related repos use npm-style monorepos; pnpm is the modern equivalent with better disk usage and strict peer dependency resolution. Installation is fast. `workspace:*` protocol makes internal deps explicit.
