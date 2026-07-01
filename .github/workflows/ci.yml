@@ -1,0 +1,27 @@
+name: ci
+
+# Verification gate: typecheck, unit tests, and a full build across all
+# packages. Runs on every push to main and every pull request so broken changes
+# are caught before (and independently of) the Pages deploy. Single Ubuntu job
+# for speed; `pnpm verify` is the same command developers run locally.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Gate (typecheck, test, build)
+        run: pnpm verify

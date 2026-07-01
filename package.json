@@ -19,6 +19,7 @@
     "build:pages": "VC_BASE=/vector-channels/ pnpm --filter @vector-channels/standalone-app build",
     "test": "pnpm --filter '@vector-channels/*' test",
     "typecheck": "pnpm --filter '@vector-channels/*' typecheck",
+    "verify": "pnpm typecheck && pnpm test && pnpm build",
     "clean": "pnpm --filter '@vector-channels/*' --parallel exec rm -rf dist node_modules .turbo"
   },
   "devDependencies": {

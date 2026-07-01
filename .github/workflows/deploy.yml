@@ -33,6 +33,12 @@ jobs:
           cache: pnpm
       - name: Install
         run: pnpm install --frozen-lockfile
+      # Gate the deploy: a failing typecheck or test stops the job before the
+      # artifact is built, so broken changes never publish to Pages.
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Test
+        run: pnpm test
       - uses: actions/configure-pages@v5
       - name: Build the demo app for Pages (base /vector-channels/)
         run: pnpm build:pages
