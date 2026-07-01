@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Paul Ramirez
 // Licensed under the MIT License
 
+import { useEffect, useState } from 'react';
 import {
   ALERT_STYLES,
   type Activity,
@@ -17,6 +18,15 @@ export interface SidebarProps {
   modes: Record<string, ModeDef>;
   activities: Activity[];
   events: EventMarker[];
+  /** Initial collapsed state. Defaults to false (expanded). */
+  defaultCollapsed?: boolean;
+  /**
+   * Called whenever the collapsed state changes (and once on mount with the
+   * initial value). Hosts embedding a resizable map should use this to call
+   * the map's resize hook — e.g. Leaflet's `map.invalidateSize()` — since the
+   * panel collapse reclaims horizontal space the map won't otherwise notice.
+   */
+  onCollapsedChange?: (collapsed: boolean) => void;
 }
 
 const RANGE_FMT = (v: number): string =>
@@ -28,7 +38,16 @@ export function Sidebar({
   modes,
   activities,
   events,
+  defaultCollapsed = false,
+  onCollapsedChange,
 }: SidebarProps): JSX.Element {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed);
+
+  // Notify the host on mount and on every toggle so it can resize the map.
+  useEffect(() => {
+    onCollapsedChange?.(collapsed);
+  }, [collapsed, onCollapsedChange]);
+
   const primaryVar = store((s) => s.primaryVar);
   const widthVar = store((s) => s.widthVar);
   const widthInvert = store((s) => s.widthInvert);
@@ -63,11 +82,50 @@ export function Sidebar({
   );
   const modeEntries = Object.entries(modes);
 
+  if (collapsed) {
+    return (
+      <div
+        className="w-9 shrink-0 border-l border-slate-800 flex flex-col transition-[width] duration-200 ease-in-out"
+        style={{ backgroundColor: '#0a0f1a' }}
+      >
+        <button
+          type="button"
+          onClick={() => setCollapsed(false)}
+          title="Expand controls"
+          aria-label="Expand controls"
+          aria-expanded={false}
+          className="flex-1 w-full flex flex-col items-center gap-3 pt-3 text-slate-500 hover:text-slate-200 hover:bg-slate-900/60 focus:outline-none focus-visible:text-slate-200"
+        >
+          <span className="text-lg leading-none">&lsaquo;</span>
+          <span className="text-[10px] uppercase tracking-widest select-none [writing-mode:vertical-rl] rotate-180">
+            Controls
+          </span>
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div
-      className="w-80 shrink-0 border-l border-slate-800 overflow-y-auto p-4 space-y-5"
+      className="w-80 shrink-0 border-l border-slate-800 flex flex-col transition-[width] duration-200 ease-in-out"
       style={{ backgroundColor: '#0a0f1a' }}
     >
+      <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800 shrink-0">
+        <span className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+          Controls
+        </span>
+        <button
+          type="button"
+          onClick={() => setCollapsed(true)}
+          title="Collapse controls"
+          aria-label="Collapse controls"
+          aria-expanded
+          className="text-slate-500 hover:text-slate-200 px-1 text-lg leading-none focus:outline-none focus-visible:text-slate-200"
+        >
+          &rsaquo;
+        </button>
+      </div>
+      <div className="overflow-y-auto p-4 space-y-5">
       <Section title="Primary channel" hint="color + width">
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -349,6 +407,7 @@ export function Sidebar({
           </div>
         ) : null}
       </Section>
+      </div>
     </div>
   );
 }

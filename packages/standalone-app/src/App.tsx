@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Paul Ramirez
 // Licensed under the MIT License
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import L from 'leaflet';
 import type { VariableDef } from '@vector-channels/core';
 import { VectorChannelsLayer } from '@vector-channels/leaflet-layer';
@@ -35,6 +35,19 @@ export function App(): JSX.Element {
   const layerRef = useRef<VectorChannelsLayer | null>(null);
 
   const trajectory = useMemo(() => buildJezeroTrajectory(), []);
+
+  // When the control panel collapses/expands, the map's flex container resizes
+  // but Leaflet doesn't detect it on its own. Invalidate immediately and again
+  // after the ~200ms width transition so the map fills the reclaimed space and
+  // its hit-testing stays aligned. mapRef is read at call time so a late timer
+  // is a safe no-op if the map has been torn down.
+  const handleSidebarCollapse = useCallback((): void => {
+    const invalidate = (): void => {
+      mapRef.current?.invalidateSize({ pan: false });
+    };
+    requestAnimationFrame(invalidate);
+    setTimeout(invalidate, 240);
+  }, []);
 
   // Merge per-variable ramp overrides from the store into VARIABLES. Effects
   // below push the merged list to the layer and we pass it to Sidebar/Readout.
@@ -163,6 +176,8 @@ export function App(): JSX.Element {
           modes={MODES}
           activities={trajectory.activities}
           events={trajectory.events}
+          defaultCollapsed
+          onCollapsedChange={handleSidebarCollapse}
         />
       </div>
       <Readout
