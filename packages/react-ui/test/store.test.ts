@@ -186,6 +186,8 @@ describe('selectRenderConfig', () => {
       widthInvert: true,
       uncertaintyVar: 'databuf',
       uncertaintyInvert: true,
+      flowVar: 'wheel',
+      flowInvert: true,
       channels: ['cpu', 'wheel'],
       alerts: ['battery', 'cpu'],
       stateOverlay: false,
@@ -198,6 +200,8 @@ describe('selectRenderConfig', () => {
       widthInvert: true,
       uncertaintyVar: 'databuf',
       uncertaintyInvert: true,
+      flowVar: 'wheel',
+      flowInvert: true,
       channels: ['cpu', 'wheel'],
       alerts: ['battery', 'cpu'],
       stateOverlay: false,
@@ -219,5 +223,21 @@ describe('selectRenderConfig', () => {
     const cfg = selectRenderConfig(store.getState());
     expect(cfg.uncertaintyVar).toBe('databuf');
     expect(cfg.uncertaintyInvert).toBe(true);
+  });
+
+  it('defaults the flow role to unset', () => {
+    const store = createVectorChannelsStore();
+    const cfg = selectRenderConfig(store.getState());
+    expect(cfg.flowVar).toBeNull();
+    expect(cfg.flowInvert).toBe(false);
+  });
+
+  it('setFlow / setFlowInvert flow through to the config', () => {
+    const store = createVectorChannelsStore();
+    store.getState().setFlow('wheel');
+    store.getState().setFlowInvert(true);
+    const cfg = selectRenderConfig(store.getState());
+    expect(cfg.flowVar).toBe('wheel');
+    expect(cfg.flowInvert).toBe(true);
   });
 });

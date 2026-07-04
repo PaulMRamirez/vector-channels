@@ -58,6 +58,13 @@ export class VectorChannelsLayer extends L.Layer {
   private _cssHeight = 0;
   private _rafId: number | null = null;
 
+  // Flow animation: a continuous rAF loop, distinct from the one-shot redraw
+  // above, that runs only while a flow variable is assigned. _flowStartMs is the
+  // origin for the elapsed time fed to the renderer.
+  private _flowRafId: number | null = null;
+  private _flowStartMs: number | null = null;
+  private _prefersReducedMotion: boolean;
+
   private _sampleHitRadiusPx: number;
   private _eventHitRadiusPx: number;
 
@@ -73,6 +80,10 @@ export class VectorChannelsLayer extends L.Layer {
     this._activityIndices = computeActivityIndices(options.trajectory);
     this._sampleHitRadiusPx = options.sampleHitRadiusPx ?? 80;
     this._eventHitRadiusPx = options.eventHitRadiusPx ?? 11;
+    this._prefersReducedMotion =
+      typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+        ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        : false;
   }
 
   override onAdd(map: L.Map): this {
@@ -95,6 +106,7 @@ export class VectorChannelsLayer extends L.Layer {
     this._canvas.addEventListener('mouseleave', this._onPointerLeave);
 
     this._reset();
+    this._startFlow();
     return this;
   }
 
@@ -113,6 +125,7 @@ export class VectorChannelsLayer extends L.Layer {
       cancelAnimationFrame(this._rafId);
       this._rafId = null;
     }
+    this._stopFlow();
 
     L.DomUtil.remove(this._canvas);
     this._mapRef = undefined;
@@ -121,7 +134,14 @@ export class VectorChannelsLayer extends L.Layer {
 
   setConfig(config: RenderConfig): void {
     this._renderer.setConfig(config);
-    this._scheduleRedraw();
+    if (this._flowEnabled()) {
+      this._startFlow();
+    } else {
+      // Flow just turned off (or was never on): stop the loop and repaint once
+      // so any lingering chevrons are cleared.
+      this._stopFlow();
+      this._scheduleRedraw();
+    }
   }
 
   setTrajectory(trajectory: Trajectory): void {
@@ -216,11 +236,44 @@ export class VectorChannelsLayer extends L.Layer {
   }
 
   private _scheduleRedraw(): void {
+    // While the flow loop is running it already repaints every frame from
+    // current state, so a one-shot redraw would just double-paint.
+    if (this._flowRafId !== null) return;
     if (this._rafId !== null) return;
     this._rafId = requestAnimationFrame(() => {
       this._rafId = null;
       this._redraw();
     });
+  }
+
+  /** Flow animates only when a flow variable is set and motion is not reduced. */
+  private _flowEnabled(): boolean {
+    return (
+      this._renderer.getConfig().flowVar != null && !this._prefersReducedMotion
+    );
+  }
+
+  private _startFlow(): void {
+    if (this._flowRafId !== null || !this._flowEnabled()) return;
+    if (this._flowStartMs === null) this._flowStartMs = performance.now();
+    const tick = (): void => {
+      this._flowRafId = null;
+      if (!this._flowEnabled()) {
+        this._flowStartMs = null;
+        return;
+      }
+      this._redraw();
+      this._flowRafId = requestAnimationFrame(tick);
+    };
+    this._flowRafId = requestAnimationFrame(tick);
+  }
+
+  private _stopFlow(): void {
+    if (this._flowRafId !== null) {
+      cancelAnimationFrame(this._flowRafId);
+      this._flowRafId = null;
+    }
+    this._flowStartMs = null;
   }
 
   private _redraw(): void {
@@ -241,6 +294,9 @@ export class VectorChannelsLayer extends L.Layer {
     }
     this._lastScreenPoints = screenPoints;
 
+    const timeMs =
+      this._flowStartMs !== null ? performance.now() - this._flowStartMs : 0;
+
     this._renderer.draw(ctx, {
       screenPoints,
       eventIndices: this._eventIndices,
@@ -251,6 +307,7 @@ export class VectorChannelsLayer extends L.Layer {
       width: this._cssWidth,
       height: this._cssHeight,
       drawBackground: false,
+      timeMs,
     });
   }
 

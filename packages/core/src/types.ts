@@ -125,6 +125,16 @@ export interface RenderConfig {
   uncertaintyVar: string | null;
   /** Flip the fade so a "confidence" variable (high = good) reads correctly. */
   uncertaintyInvert: boolean;
+  /**
+   * Variable that drives the flow overlay — animated chevrons marching along
+   * the primary in the direction of travel, at screen-speed proportional to
+   * this variable. Chevrons freeze where it reads ~0 (stationary) and bunch
+   * where it is low, so motion itself encodes rate. Independent of every other
+   * role. Null = no flow overlay.
+   */
+  flowVar: string | null;
+  /** Flip so a variable framed as slowness (high = slow) reads correctly. */
+  flowInvert: boolean;
   channels: string[]; // ordered list; index 0 is tightest to the primary
   /**
    * Watchlist of variable ids. Each watched variable contributes its limit
@@ -170,4 +180,11 @@ export interface RenderInput {
   height: number;
   /** Whether to render the background grid. Off when layered over a basemap. */
   drawBackground?: boolean;
+  /**
+   * Elapsed animation time in milliseconds, used to phase the flow overlay.
+   * The host advances this from its animation loop. Omit (or pass a constant)
+   * to freeze flow at a static phase — the accessible fallback for reduced
+   * motion, and what tests use for determinism.
+   */
+  timeMs?: number;
 }

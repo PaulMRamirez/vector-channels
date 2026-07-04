@@ -53,6 +53,8 @@ export function Sidebar({
   const widthInvert = store((s) => s.widthInvert);
   const uncertaintyVar = store((s) => s.uncertaintyVar);
   const uncertaintyInvert = store((s) => s.uncertaintyInvert);
+  const flowVar = store((s) => s.flowVar);
+  const flowInvert = store((s) => s.flowInvert);
   const channels = store((s) => s.channels);
   const alerts = store((s) => s.alerts);
   const stateOverlay = store((s) => s.stateOverlay);
@@ -64,6 +66,8 @@ export function Sidebar({
   const setWidthInvert = store((s) => s.setWidthInvert);
   const setUncertainty = store((s) => s.setUncertainty);
   const setUncertaintyInvert = store((s) => s.setUncertaintyInvert);
+  const setFlow = store((s) => s.setFlow);
+  const setFlowInvert = store((s) => s.setFlowInvert);
   const addChannel = store((s) => s.addChannel);
   const removeChannel = store((s) => s.removeChannel);
   const moveChannel = store((s) => s.moveChannel);
@@ -80,6 +84,7 @@ export function Sidebar({
   const uncertaintyVarDef = uncertaintyVar
     ? varById.get(uncertaintyVar) ?? null
     : null;
+  const flowVarDef = flowVar ? varById.get(flowVar) ?? null : null;
 
   const addChannelOptions = variables.filter(
     (v) => v.id !== primaryVar && !channels.includes(v.id),
@@ -304,6 +309,37 @@ export function Sidebar({
             ))}
           </div>
         ) : null}
+      </Section>
+
+      <Section title="Flow" hint="direction + rate">
+        <div className="space-y-2">
+          <VarSelect
+            value={flowVar}
+            options={variables}
+            onChange={setFlow}
+            includeNone
+            noneLabel="(off)"
+          />
+          {flowVarDef ? (
+            <div className="flex items-center justify-between text-xs text-slate-500">
+              <span>chevrons drift with rate</span>
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="accent-slate-400"
+                  checked={flowInvert}
+                  onChange={(e) => setFlowInvert(e.target.checked)}
+                />
+                slowness
+              </label>
+            </div>
+          ) : (
+            <div className="text-xs text-slate-600 italic">
+              Chevrons march downstream at a pace set by the variable, and stall
+              where it reads zero. Freezes under reduced-motion.
+            </div>
+          )}
+        </div>
       </Section>
 
       <Section title="Channels" hint="tight → outer, ordered">
