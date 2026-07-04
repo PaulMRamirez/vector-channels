@@ -184,6 +184,8 @@ describe('selectRenderConfig', () => {
       primaryVar: 'battery',
       widthVar: 'slope',
       widthInvert: true,
+      uncertaintyVar: 'databuf',
+      uncertaintyInvert: true,
       channels: ['cpu', 'wheel'],
       alerts: ['battery', 'cpu'],
       stateOverlay: false,
@@ -194,10 +196,28 @@ describe('selectRenderConfig', () => {
       primaryVar: 'battery',
       widthVar: 'slope',
       widthInvert: true,
+      uncertaintyVar: 'databuf',
+      uncertaintyInvert: true,
       channels: ['cpu', 'wheel'],
       alerts: ['battery', 'cpu'],
       stateOverlay: false,
       showEvents: true,
     });
+  });
+
+  it('defaults the uncertainty role to unset', () => {
+    const store = createVectorChannelsStore();
+    const cfg = selectRenderConfig(store.getState());
+    expect(cfg.uncertaintyVar).toBeNull();
+    expect(cfg.uncertaintyInvert).toBe(false);
+  });
+
+  it('setUncertainty / setUncertaintyInvert flow through to the config', () => {
+    const store = createVectorChannelsStore();
+    store.getState().setUncertainty('databuf');
+    store.getState().setUncertaintyInvert(true);
+    const cfg = selectRenderConfig(store.getState());
+    expect(cfg.uncertaintyVar).toBe('databuf');
+    expect(cfg.uncertaintyInvert).toBe(true);
   });
 });

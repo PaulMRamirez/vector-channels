@@ -6,6 +6,7 @@ import {
   ALERT_BASE_WIDTH,
   type AlertWatch,
   computePrimaryWidths,
+  computeUncertaintyAlphas,
   drawActivityHighlight,
   drawBackground,
   drawChannel,
@@ -149,6 +150,14 @@ export class VectorChannelsRenderer {
       config.widthInvert
     );
 
+    const uncertaintyVar = this.getVariable(config.uncertaintyVar);
+    const uncertaintyAlphas = computeUncertaintyAlphas(
+      n,
+      this.getValues(config.uncertaintyVar),
+      uncertaintyVar,
+      config.uncertaintyInvert
+    );
+
     const channelOffsetBase = config.channelOffsetBase ?? 9;
     const channelOffsetStep = config.channelOffsetStep ?? 7;
     const channelStrokeWidth = config.channelStrokeWidth ?? 3.5;
@@ -203,6 +212,7 @@ export class VectorChannelsRenderer {
         widths,
         colorValues: this.getValues(config.primaryVar),
         colorVar: primaryVar,
+        uncertaintyAlphas,
         stateValues: this.modeArray,
         stateOverlay: config.stateOverlay,
         modes: this.modes,

@@ -72,6 +72,15 @@ export const VARIABLES: VariableDef[] = [
     ramp: 'grayscale',
     fmt: (v) => v.toFixed(0),
   },
+  {
+    id: 'posunc',
+    name: 'Localization Uncertainty',
+    short: 'PosUnc',
+    unit: 'm',
+    range: [0, 12],
+    ramp: 'grayscale',
+    fmt: (v) => v.toFixed(1),
+  },
 ];
 
 export const MODES: Record<string, ModeDef> = {
@@ -210,6 +219,19 @@ function computeSampleValues(tNorm: number, mode: string): Record<string, number
       case 'solar':
         norm = Math.max(0, Math.sin(tNorm * Math.PI)) * 0.96;
         break;
+      case 'posunc': {
+        // Visual-odometry confidence degrades where the drive gets hard.
+        // A sharp loss of lock coincides with the rough-terrain event
+        // (t~0.42); a noisy stretch spans the stationary drill (0.55-0.7)
+        // where VO has few fresh features to track. Elsewhere it is tight.
+        let u = 0.06;
+        u += 0.82 * Math.exp(-Math.pow((tNorm - 0.42) / 0.03, 2));
+        if (tNorm > 0.55 && tNorm < 0.7) {
+          u = Math.max(u, 0.34 + 0.14 * Math.sin(tNorm * Math.PI * 40));
+        }
+        norm = u;
+        break;
+      }
       default:
         norm = 0.5;
     }
