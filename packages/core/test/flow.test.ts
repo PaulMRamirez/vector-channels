@@ -3,7 +3,6 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  FLOW_RATE_FLOOR,
   computeFlowField,
   drawFlow,
   placeFlowChevrons,
@@ -26,38 +25,29 @@ const tangentsAlongX = (n: number): Array<[number, number]> =>
   Array.from({ length: n }, () => [1, 0]);
 
 describe('computeFlowField', () => {
-  it('leaves u equal to arc length when no rate variable is set', () => {
-    const pts = straightPath(5, 10);
-    const f = computeFlowField(pts, null, null, false);
+  it('measures cumulative arc length and defaults rate to 1 with no variable', () => {
+    const f = computeFlowField(straightPath(5, 10), null, null, false);
     expect(f.totalLen).toBeCloseTo(40, 10);
-    expect(f.u).toEqual(f.cum);
-    expect(f.totalU).toBeCloseTo(f.totalLen, 10);
+    expect(f.cum).toEqual([0, 10, 20, 30, 40]);
+    expect(f.rate).toEqual([1, 1, 1, 1, 1]);
   });
 
-  it('warps u longer than arc length across a slow stretch', () => {
-    // Rate collapses to zero on the last segment; both endpoints floor.
-    const pts = straightPath(4, 10);
-    const f = computeFlowField(pts, [1, 1, 0, 0], rateVar, false);
-    const dsLast = f.cum[3] - f.cum[2]; // 10 px
-    const duLast = f.u[3] - f.u[2];
-    expect(dsLast).toBeCloseTo(10, 10);
-    // du = ds / floor, so the slow segment stretches in flow coordinates.
-    expect(duLast).toBeCloseTo(10 / FLOW_RATE_FLOOR, 6);
-    expect(duLast).toBeGreaterThan(dsLast);
+  it('carries normalized rate per sample, reaching 0 when stationary', () => {
+    const f = computeFlowField(straightPath(3, 10), [1, 0.5, 0], rateVar, false);
+    expect(f.rate[0]).toBeCloseTo(1, 10);
+    expect(f.rate[1]).toBeCloseTo(0.5, 10);
+    expect(f.rate[2]).toBeCloseTo(0, 10); // no floor — stations read as truly zero
   });
 
-  it('floors the rate so a stationary sample never diverges', () => {
-    const pts = straightPath(2, 10);
-    const f = computeFlowField(pts, [0, 0], rateVar, false);
-    expect(f.rate[0]).toBeCloseTo(FLOW_RATE_FLOOR, 10);
-    expect(Number.isFinite(f.totalU)).toBe(true);
+  it('inverts so a slowness variable (high = stopped) fades correctly', () => {
+    const f = computeFlowField(straightPath(2, 10), [1, 0], rateVar, true);
+    expect(f.rate[0]).toBeCloseTo(0, 10);
+    expect(f.rate[1]).toBeCloseTo(1, 10);
   });
 
-  it('inverts so a slowness variable (high = slow) reads correctly', () => {
-    const pts = straightPath(2, 10);
-    // Value at range max, inverted, becomes rate 0 -> floored.
-    const f = computeFlowField(pts, [1, 1], rateVar, true);
-    expect(f.rate[0]).toBeCloseTo(FLOW_RATE_FLOOR, 10);
+  it('treats a null reading as full rate (no signal is not a stop)', () => {
+    const f = computeFlowField(straightPath(3, 10), [1, null, 0], rateVar, false);
+    expect(f.rate[1]).toBe(1);
   });
 });
 
@@ -66,22 +56,36 @@ describe('placeFlowChevrons', () => {
   const tan = tangentsAlongX(11);
   const field = computeFlowField(pts, null, null, false);
 
-  it('places roughly one chevron per spacing interval, headed downstream', () => {
+  it('spaces chevrons evenly along the path, headed downstream', () => {
     const chevrons = placeFlowChevrons(pts, tan, field, 0);
     expect(chevrons.length).toBe(4); // round(100 / 26)
-    expect(chevrons[0].angle).toBeCloseTo(0, 10); // travels along +x
+    expect(chevrons[0].angle).toBeCloseTo(0, 10);
+    // Even spacing in physical arc length: ~25 px apart.
+    expect(chevrons[1].x - chevrons[0].x).toBeCloseTo(25, 6);
   });
 
   it('is deterministic in timeMs', () => {
-    const a = placeFlowChevrons(pts, tan, field, 250);
-    const b = placeFlowChevrons(pts, tan, field, 250);
-    expect(a).toEqual(b);
+    expect(placeFlowChevrons(pts, tan, field, 250)).toEqual(
+      placeFlowChevrons(pts, tan, field, 250),
+    );
   });
 
-  it('advances chevrons downstream as time increases', () => {
+  it('advances every chevron downstream at a constant pace', () => {
     const t0 = placeFlowChevrons(pts, tan, field, 0);
-    const t1 = placeFlowChevrons(pts, tan, field, 100); // small, no wrap
-    expect(t1[0].x).toBeGreaterThan(t0[0].x);
+    const t1 = placeFlowChevrons(pts, tan, field, 100); // 34 px/s * 0.1s = 3.4 px
+    expect(t1[0].x - t0[0].x).toBeCloseTo(3.4, 6);
+  });
+
+  it('drives opacity from local rate — bright while moving, gone when stopped', () => {
+    // Rate high over the first half, zero over the second.
+    const rates = Array.from({ length: 11 }, (_, i) => (i < 5 ? 1 : 0));
+    const f = computeFlowField(pts, rates, rateVar, false);
+    const chevrons = placeFlowChevrons(pts, tan, f, 0);
+    const alphas = chevrons.map((c) => c.alpha);
+    expect(Math.max(...alphas)).toBeGreaterThan(0.6); // moving stretch is visible
+    expect(Math.min(...alphas)).toBeLessThan(0.05); // stationary stretch fades out
+    // Monotone-ish: a downstream (slower) chevron is no brighter than an upstream one.
+    expect(chevrons[chevrons.length - 1].alpha).toBeLessThan(chevrons[0].alpha);
   });
 
   it('returns nothing for a degenerate (zero-length) path', () => {
@@ -95,7 +99,10 @@ describe('placeFlowChevrons', () => {
 });
 
 describe('drawFlow', () => {
-  it('strokes one path per chevron without throwing', () => {
+  function recordingCtx(): {
+    ctx: CanvasRenderingContext2D;
+    strokes: () => number;
+  } {
     let strokes = 0;
     const ctx = {
       beginPath() {},
@@ -109,24 +116,22 @@ describe('drawFlow', () => {
       lineCap: '',
       lineJoin: '',
     } as unknown as CanvasRenderingContext2D;
-    const pts = straightPath(11, 10);
-    const field = computeFlowField(pts, null, null, false);
-    const chevrons = placeFlowChevrons(pts, tangentsAlongX(11), field, 0);
+    return { ctx, strokes: () => strokes };
+  }
+
+  it('strokes only the visible chevrons, skipping faded-out ones', () => {
+    const { ctx, strokes } = recordingCtx();
+    const chevrons = [
+      { x: 0, y: 0, angle: 0, alpha: 0.7 },
+      { x: 1, y: 0, angle: 0, alpha: 0.0 }, // stationary — skipped
+      { x: 2, y: 0, angle: 0, alpha: 0.4 },
+    ];
     drawFlow(ctx, chevrons);
-    expect(strokes).toBe(chevrons.length);
+    expect(strokes()).toBe(2);
   });
 
   it('tolerates an empty chevron list', () => {
-    const ctx = {
-      beginPath() {},
-      moveTo() {},
-      lineTo() {},
-      stroke() {},
-      strokeStyle: '',
-      lineWidth: 0,
-      lineCap: '',
-      lineJoin: '',
-    } as unknown as CanvasRenderingContext2D;
+    const { ctx } = recordingCtx();
     expect(() => drawFlow(ctx, [])).not.toThrow();
   });
 });
