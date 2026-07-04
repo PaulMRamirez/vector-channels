@@ -5,9 +5,11 @@ import { computeTangents, offsetForChannel } from './geometry.js';
 import {
   ALERT_BASE_WIDTH,
   type AlertWatch,
+  computeFlowField,
   computePrimaryWidths,
   computeUncertaintyAlphas,
   drawActivityHighlight,
+  drawFlow,
   drawBackground,
   drawChannel,
   drawGlyph,
@@ -15,6 +17,7 @@ import {
   drawPrimaryChannel,
   extractModes,
   extractValues,
+  placeFlowChevrons,
 } from './render.js';
 import type {
   ModeDef,
@@ -165,9 +168,10 @@ export class VectorChannelsRenderer {
     // Layer order:
     //   1. channels (outer → inner, so tighter channels render on top)
     //   2. primary channel (with alert band)
-    //   3. activity hover highlight
-    //   4. event glyphs
-    //   5. hover indicator
+    //   3. flow overlay (chevrons on the path)
+    //   4. activity hover highlight
+    //   5. event glyphs
+    //   6. hover indicator
 
     for (let idx = config.channels.length - 1; idx >= 0; idx--) {
       const id = config.channels[idx];
@@ -221,6 +225,26 @@ export class VectorChannelsRenderer {
         alertWidthScale: config.alertWidthScale,
         alertMinOffsetPx: alertMinOffset,
       });
+    }
+
+    // Flow overlay: independent of the primary role — chevrons ride the path
+    // itself, so this draws whenever a flow variable is assigned. On top of the
+    // strip/alerts, under event glyphs and the hover indicator.
+    const flowVar = this.getVariable(config.flowVar);
+    if (flowVar) {
+      const field = computeFlowField(
+        screenPoints,
+        this.getValues(config.flowVar),
+        flowVar,
+        config.flowInvert
+      );
+      const chevrons = placeFlowChevrons(
+        screenPoints,
+        tangents,
+        field,
+        input.timeMs ?? 0
+      );
+      drawFlow(ctx, chevrons);
     }
 
     if (

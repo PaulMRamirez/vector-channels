@@ -388,6 +388,170 @@ export function drawPrimaryChannel(
 }
 
 // ---------------------------------------------------------------------------
+// Flow overlay (animated direction-of-travel chevrons)
+// ---------------------------------------------------------------------------
+
+/**
+ * Lower bound on the normalized rate used by the flow warp. The warp maps
+ * screen arc length s to u = integral(ds / rate); a true zero would send u to
+ * infinity, so a stationary stretch is clamped here. Small enough that chevrons
+ * visibly stall where the rover holds station, large enough that u stays finite.
+ */
+export const FLOW_RATE_FLOOR = 0.06;
+
+/** Average chevron spacing in screen pixels (before warping). */
+const FLOW_SPACING_PX = 26;
+/** March speed in screen px/s at full rate (rate = 1). */
+const FLOW_SPEED_PX_PER_SEC = 34;
+
+export interface FlowField {
+  /** Cumulative screen arc length at each sample. */
+  cum: number[];
+  /** Rate-warped coordinate u = integral(ds / rate) at each sample. */
+  u: number[];
+  /** Per-sample normalized rate in [FLOW_RATE_FLOOR, 1] (post-invert). */
+  rate: number[];
+  totalLen: number;
+  totalU: number;
+}
+
+/**
+ * Build the rate-warped arc-length tables for the flow overlay from the current
+ * screen-space points and a per-sample rate variable. Arc length is measured in
+ * screen pixels, so this is recomputed each frame as the map moves — O(n) and
+ * cheap.
+ *
+ * A chevron advancing at constant du/dt covers screen distance ds/dt = rate * c,
+ * so it moves fast on high-rate stretches and stalls on stationary ones. That is
+ * the flow encoding: motion carries the rate reading, orientation the heading.
+ */
+export function computeFlowField(
+  points: ScreenPoint[],
+  rateValues: (number | null)[] | null,
+  rateVar: VariableDef | null,
+  invert: boolean
+): FlowField {
+  const n = points.length;
+  const cum = new Array<number>(n);
+  const u = new Array<number>(n);
+  const rate = new Array<number>(n);
+
+  const rateAt = (i: number): number => {
+    if (!rateVar) return 1;
+    const v = rateValues?.[i];
+    if (v == null) return 1;
+    let t = normalize(v, rateVar.range);
+    if (invert) t = 1 - t;
+    return Math.max(FLOW_RATE_FLOOR, t);
+  };
+
+  rate[0] = rateAt(0);
+  cum[0] = 0;
+  u[0] = 0;
+  for (let i = 1; i < n; i++) {
+    rate[i] = rateAt(i);
+    const ds = Math.hypot(
+      points[i].x - points[i - 1].x,
+      points[i].y - points[i - 1].y
+    );
+    cum[i] = cum[i - 1] + ds;
+    // Segment rate is the mean of its endpoints; already floored above.
+    const segRate = (rate[i - 1] + rate[i]) / 2;
+    u[i] = u[i - 1] + ds / segRate;
+  }
+  return { cum, u, rate, totalLen: cum[n - 1] ?? 0, totalU: u[n - 1] ?? 0 };
+}
+
+export interface FlowChevron {
+  x: number;
+  y: number;
+  /** Heading in radians (direction of travel). */
+  angle: number;
+  alpha: number;
+}
+
+/** Invert u -> screen position by locating uStar in the monotonic u table. */
+function locateU(
+  field: FlowField,
+  points: ScreenPoint[],
+  tangents: Array<[number, number]>,
+  uStar: number
+): FlowChevron {
+  const { u, rate } = field;
+  let lo = 1;
+  let hi = u.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (u[mid] < uStar) lo = mid + 1;
+    else hi = mid;
+  }
+  const i = lo;
+  const span = u[i] - u[i - 1] || 1;
+  const f = Math.min(1, Math.max(0, (uStar - u[i - 1]) / span));
+  const x = points[i - 1].x + (points[i].x - points[i - 1].x) * f;
+  const y = points[i - 1].y + (points[i].y - points[i - 1].y) * f;
+  const [tx, ty] = tangents[i];
+  const r = rate[i - 1] + (rate[i] - rate[i - 1]) * f;
+  // Brighter where faster, so the eye is drawn to active travel; never invisible.
+  return { x, y, angle: Math.atan2(ty, tx), alpha: 0.18 + 0.5 * r };
+}
+
+/**
+ * Place flow chevrons for a given animation time. Chevrons are evenly spaced in
+ * the warped coordinate u (so their physical spacing bunches where rate is low)
+ * and advance by FLOW_SPEED_PX_PER_SEC at full rate. Deterministic in timeMs:
+ * position is a pure function of the phase, so no cross-frame state is kept.
+ */
+export function placeFlowChevrons(
+  points: ScreenPoint[],
+  tangents: Array<[number, number]>,
+  field: FlowField,
+  timeMs: number
+): FlowChevron[] {
+  if (field.totalU <= 0 || field.totalLen <= 0) return [];
+  const count = Math.max(1, Math.round(field.totalLen / FLOW_SPACING_PX));
+  const du = field.totalU / count;
+  // Phase in u-units: at rate 1, du = ds, so this is px/s directly.
+  const phase =
+    ((FLOW_SPEED_PX_PER_SEC * (timeMs / 1000)) % field.totalU + field.totalU) %
+    field.totalU;
+  const out: FlowChevron[] = new Array(count);
+  for (let k = 0; k < count; k++) {
+    const uStar = (k * du + phase) % field.totalU;
+    out[k] = locateU(field, points, tangents, uStar);
+  }
+  return out;
+}
+
+/** Stroke flow chevrons. Orientation is baked into each chevron's points. */
+export function drawFlow(
+  ctx: CanvasRenderingContext2D,
+  chevrons: FlowChevron[]
+): void {
+  const sz = 3.2;
+  ctx.lineWidth = 1.8;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  for (const c of chevrons) {
+    const ca = Math.cos(c.angle);
+    const sa = Math.sin(c.angle);
+    // Local arms (-sz,-sz)->(sz,0)->(-sz,sz) rotated into heading, then placed.
+    const ax = c.x - sz * ca + sz * sa;
+    const ay = c.y - sz * sa - sz * ca;
+    const bx = c.x + sz * ca;
+    const by = c.y + sz * sa;
+    const dx = c.x - sz * ca - sz * sa;
+    const dy = c.y - sz * sa + sz * ca;
+    ctx.strokeStyle = `rgba(233,242,250,${c.alpha})`;
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(bx, by);
+    ctx.lineTo(dx, dy);
+    ctx.stroke();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Event glyphs
 // ---------------------------------------------------------------------------
 

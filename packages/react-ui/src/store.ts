@@ -32,6 +32,8 @@ export interface VectorChannelsState {
   widthInvert: boolean;
   uncertaintyVar: string | null;
   uncertaintyInvert: boolean;
+  flowVar: string | null;
+  flowInvert: boolean;
   channels: string[];
   alerts: string[];
   stateOverlay: boolean;
@@ -51,6 +53,8 @@ export interface VectorChannelsState {
   setWidthInvert: (invert: boolean) => void;
   setUncertainty: (id: string | null) => void;
   setUncertaintyInvert: (invert: boolean) => void;
+  setFlow: (id: string | null) => void;
+  setFlowInvert: (invert: boolean) => void;
   addChannel: (id: string) => void;
   removeChannel: (id: string) => void;
   moveChannel: (idx: number, dir: -1 | 1) => void;
@@ -72,6 +76,8 @@ export interface StoreInit {
   widthInvert?: boolean;
   uncertaintyVar?: string | null;
   uncertaintyInvert?: boolean;
+  flowVar?: string | null;
+  flowInvert?: boolean;
   channels?: string[];
   alerts?: string[];
   stateOverlay?: boolean;
@@ -90,6 +96,8 @@ export const selectRenderConfig = (state: VectorChannelsState): RenderConfig => 
   widthInvert: state.widthInvert,
   uncertaintyVar: state.uncertaintyVar,
   uncertaintyInvert: state.uncertaintyInvert,
+  flowVar: state.flowVar,
+  flowInvert: state.flowInvert,
   channels: state.channels,
   alerts: state.alerts,
   stateOverlay: state.stateOverlay,
@@ -113,6 +121,8 @@ export function createVectorChannelsStore(initial?: StoreInit): VectorChannelsSt
     widthInvert: initial?.widthInvert ?? false,
     uncertaintyVar: initial?.uncertaintyVar ?? null,
     uncertaintyInvert: initial?.uncertaintyInvert ?? false,
+    flowVar: initial?.flowVar ?? null,
+    flowInvert: initial?.flowInvert ?? false,
     channels: initial?.channels ?? [],
     alerts: initial?.alerts ?? [],
     stateOverlay: initial?.stateOverlay ?? false,
@@ -135,6 +145,9 @@ export function createVectorChannelsStore(initial?: StoreInit): VectorChannelsSt
 
     setUncertainty: (id) => set({ uncertaintyVar: id }),
     setUncertaintyInvert: (uncertaintyInvert) => set({ uncertaintyInvert }),
+
+    setFlow: (id) => set({ flowVar: id }),
+    setFlowInvert: (flowInvert) => set({ flowInvert }),
 
     addChannel: (id) =>
       set((s) => {

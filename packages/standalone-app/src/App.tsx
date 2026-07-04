@@ -24,6 +24,9 @@ const useStore = createVectorChannelsStore({
   // Fade the strip where localization confidence drops, so untrusted stretches
   // of the traverse visibly recede. Independent of the color/width roles.
   uncertaintyVar: 'posunc',
+  // Flow chevrons march along the path at ground speed — moving on the drive
+  // legs, stalling at the imaging/drill/charge stations.
+  flowVar: 'speed',
   // Start with no channels so the initial view is uncluttered — the user adds
   // channels from the sidebar as they want to correlate more variables.
   channels: [],

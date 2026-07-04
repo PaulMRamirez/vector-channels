@@ -33,13 +33,14 @@ Essential. If channels offset in world coordinates, they'd appear closer togethe
 
 The consequence: tangents must be computed from projected screen points, not lat/lng. This is enforced in the `core` renderer.
 
-### Eight encoding channels, strictly orthogonal
+### Nine encoding channels, strictly orthogonal
 
 | Encoding | Carries | Geometric role |
 |---|---|---|
 | Primary color | One continuous variable | Fill color of the centerline strip |
 | Primary width | One continuous variable (typically quality) | Thickness of the strip |
 | Primary opacity | One continuous variable (uncertainty) | Fades the strip fill; leaves the alert band opaque |
+| Flow | One continuous variable (rate) | Animated chevrons on the path; speed and heading encode rate and direction |
 | Channels (ordered) | N continuous variables | Polylines offset from the primary |
 | Alerts (watchlist) | Worst-status across N watched variables | Stroke band beyond the channels, shown only on warn/critical segments |
 | State overlay | One discrete state series (overrides primary color) | Replaces primary color with mode color |
@@ -112,7 +113,21 @@ Rules that keep it non-competing (principle 1):
 2. **A floor, not zero** (`UNCERTAINTY_ALPHA_FLOOR = 0.12`). A maximally-uncertain segment ghosts but never vanishes: a faint strip reads as "here, but don't trust it," whereas a true gap reads as "no data." The two must stay distinguishable.
 3. **Absent signal is not doubt.** Samples with no uncertainty variable, or a null reading, render fully opaque.
 
-Implementation mirrors the width role: `RenderConfig.uncertaintyVar` / `uncertaintyInvert` (invert suits a variable framed as *confidence*, high = good), a pure `computeUncertaintyAlphas` cached per config, applied as per-quad fill alpha in `drawPrimaryChannel`. This is the first application of the "new visual variable as an independent role" pattern beyond width; motion (flow animation) is the next candidate under evaluation, tracked separately.
+Implementation mirrors the width role: `RenderConfig.uncertaintyVar` / `uncertaintyInvert` (invert suits a variable framed as *confidence*, high = good), a pure `computeUncertaintyAlphas` cached per config, applied as per-quad fill alpha in `drawPrimaryChannel`. This is the first application of the "new visual variable as an independent role" pattern beyond width; **flow** (below) is the second.
+
+### Flow: animated heading + rate, independent of every role
+
+Motion is the fifth Bertin visual variable available on a line (after color, size/width, opacity, texture). We add it as **flow**: chevrons marching along the path. It carries two readings no other encoding does — **heading** (which way the rover is going) and **rate** (how fast), the latter through the *motion itself*.
+
+Design calls, from the prototype review:
+
+1. **Speed encodes rate, honestly.** Chevrons move at screen-speed proportional to the rate variable and **stall where it reads zero** — the rover holding station shows frozen chevrons, not a treadmill implying motion that isn't there. Uniform marching everywhere was rejected for exactly that dishonesty. Implemented as a rate-warped arc-length coordinate `u = integral(ds / rate)` (rate floored at `FLOW_RATE_FLOOR` so a true zero can't diverge); a chevron at constant `du/dt` covers `ds/dt = rate·c`.
+2. **Stateless in time.** Chevron position is a pure function of `RenderInput.timeMs` — `u^-1(k·Δu + c·t)` — so `draw()` keeps no cross-frame particle state, consistent with the renderer's cache-only model, and is deterministic (testable, resume-safe).
+3. **The animation loop lives in the host, not `core`.** The Leaflet layer runs a continuous `requestAnimationFrame` loop only while a flow variable is assigned, feeding elapsed time in; `_scheduleRedraw` yields to it so frames aren't double-painted. `core` stays a pure "draw one frame at time t" surface.
+4. **Reduced motion is a first-class fallback.** Under `prefers-reduced-motion` the host does not start the loop and passes no time; chevrons render static, still showing heading. Motion is an enhancement, not the only carrier.
+5. **Independent of the other roles (principle 1).** Chevrons ride the path centerline (no new geometry), draw above the strip and below event glyphs, and — deliberately — are *not* coupled to the uncertainty fade. The prototype briefly faded chevrons over uncertain data as a "cooperation" nicety; that was dropped to keep the roles orthogonal. Flow replaces nothing.
+
+**Known tradeoff.** Flow makes the canvas redraw every frame while active (the renderer has no partial-redraw path — see the caching note in CLAUDE.md). Fine at current data sizes; the future optimization is to cache the static encodings to an offscreen canvas and repaint only the flow layer per frame. Deferred, and related to the open question on Canvas performance at scale.
 
 ## Technical choices
 

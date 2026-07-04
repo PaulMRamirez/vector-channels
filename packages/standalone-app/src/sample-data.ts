@@ -81,6 +81,15 @@ export const VARIABLES: VariableDef[] = [
     ramp: 'grayscale',
     fmt: (v) => v.toFixed(1),
   },
+  {
+    id: 'speed',
+    name: 'Ground Speed',
+    short: 'Speed',
+    unit: 'cm/s',
+    range: [0, 4.2],
+    ramp: 'cividis',
+    fmt: (v) => v.toFixed(2),
+  },
 ];
 
 export const MODES: Record<string, ModeDef> = {
@@ -230,6 +239,15 @@ function computeSampleValues(tNorm: number, mode: string): Record<string, number
           u = Math.max(u, 0.34 + 0.14 * Math.sin(tNorm * Math.PI * 40));
         }
         norm = u;
+        break;
+      }
+      case 'speed': {
+        // The rover only rolls while driving; it holds station for imaging,
+        // drilling, charging, and downlink. Flow chevrons march on the traverse
+        // legs and stall at the stations.
+        let s = 0;
+        if (mode === 'DRIVE') s = 0.82 + 0.12 * Math.sin(tNorm * Math.PI * 26);
+        norm = Math.max(0, s);
         break;
       }
       default:
