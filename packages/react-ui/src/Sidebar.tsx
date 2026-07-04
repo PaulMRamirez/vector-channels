@@ -322,7 +322,7 @@ export function Sidebar({
           />
           {flowVarDef ? (
             <div className="flex items-center justify-between text-xs text-slate-500">
-              <span>chevrons drift with rate</span>
+              <span>fades where rate is low</span>
               <label className="flex items-center gap-1.5 cursor-pointer">
                 <input
                   type="checkbox"
@@ -335,8 +335,9 @@ export function Sidebar({
             </div>
           ) : (
             <div className="text-xs text-slate-600 italic">
-              Chevrons march downstream at a pace set by the variable, and stall
-              where it reads zero. Freezes under reduced-motion.
+              Chevrons stream along the path at a steady pace and fade out where
+              the variable reads zero, e.g. while stationary. Static under
+              reduced-motion.
             </div>
           )}
         </div>
