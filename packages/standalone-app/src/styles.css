@@ -11,8 +11,18 @@ body,
   margin: 0;
 }
 
+/* A dark slate backdrop with a faint grid, not a pure-black void. The primary
+   channel's uncertainty fade is an opacity encoding, so it only reads against a
+   non-black ground: over black a faded segment just darkens into nothing (and
+   worse, looks like a data gap), whereas over this tone it shows through as a
+   muted, see-through strip — legibly "here but uncertain". A real deployment
+   swaps this for a Mars basemap, which serves the same purpose. */
 .leaflet-container {
-  background: #05060a;
+  background-color: #101823;
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
   font-family:
     ui-sans-serif,
     system-ui,

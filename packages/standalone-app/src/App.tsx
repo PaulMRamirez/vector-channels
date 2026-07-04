@@ -116,22 +116,23 @@ export function App(): JSX.Element {
     layerRef.current?.setVariables(variables);
   }, [variables]);
 
-  // Push config changes into the layer without re-rendering React.
+  // Push config changes into the layer without re-rendering React. Compare the
+  // derived RenderConfig field-by-field rather than a hand-listed subset of
+  // store keys — that list silently missed new roles (uncertainty, flow) and
+  // left them stuck at their initial values. Deriving from selectRenderConfig
+  // means every current and future config field syncs automatically. Arrays
+  // (channels/alerts) compare by reference, which is correct: the store returns
+  // a new array only when they actually change.
   useEffect(() => {
     return useStore.subscribe((state, prev) => {
       const layer = layerRef.current;
       if (!layer) return;
-      if (
-        state.primaryVar !== prev.primaryVar ||
-        state.widthVar !== prev.widthVar ||
-        state.widthInvert !== prev.widthInvert ||
-        state.channels !== prev.channels ||
-        state.alerts !== prev.alerts ||
-        state.stateOverlay !== prev.stateOverlay ||
-        state.showEvents !== prev.showEvents
-      ) {
-        layer.setConfig(selectRenderConfig(state));
-      }
+      const next = selectRenderConfig(state);
+      const previous = selectRenderConfig(prev);
+      const changed = (Object.keys(next) as Array<keyof typeof next>).some(
+        (k) => next[k] !== previous[k],
+      );
+      if (changed) layer.setConfig(next);
     });
   }, []);
 
