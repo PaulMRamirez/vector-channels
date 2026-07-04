@@ -21,6 +21,9 @@ const useStore = createVectorChannelsStore({
   primaryVar: 'battery',
   widthVar: 'slope',
   widthInvert: true,
+  // Fade the strip where localization confidence drops, so untrusted stretches
+  // of the traverse visibly recede. Independent of the color/width roles.
+  uncertaintyVar: 'posunc',
   // Start with no channels so the initial view is uncluttered — the user adds
   // channels from the sidebar as they want to correlate more variables.
   channels: [],

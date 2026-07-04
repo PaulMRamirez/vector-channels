@@ -30,6 +30,8 @@ export interface VectorChannelsState {
   primaryVar: string | null;
   widthVar: string | null;
   widthInvert: boolean;
+  uncertaintyVar: string | null;
+  uncertaintyInvert: boolean;
   channels: string[];
   alerts: string[];
   stateOverlay: boolean;
@@ -47,6 +49,8 @@ export interface VectorChannelsState {
   setPrimary: (id: string | null) => void;
   setWidth: (id: string | null) => void;
   setWidthInvert: (invert: boolean) => void;
+  setUncertainty: (id: string | null) => void;
+  setUncertaintyInvert: (invert: boolean) => void;
   addChannel: (id: string) => void;
   removeChannel: (id: string) => void;
   moveChannel: (idx: number, dir: -1 | 1) => void;
@@ -66,6 +70,8 @@ export interface StoreInit {
   primaryVar?: string | null;
   widthVar?: string | null;
   widthInvert?: boolean;
+  uncertaintyVar?: string | null;
+  uncertaintyInvert?: boolean;
   channels?: string[];
   alerts?: string[];
   stateOverlay?: boolean;
@@ -82,6 +88,8 @@ export const selectRenderConfig = (state: VectorChannelsState): RenderConfig => 
   primaryVar: state.primaryVar,
   widthVar: state.widthVar,
   widthInvert: state.widthInvert,
+  uncertaintyVar: state.uncertaintyVar,
+  uncertaintyInvert: state.uncertaintyInvert,
   channels: state.channels,
   alerts: state.alerts,
   stateOverlay: state.stateOverlay,
@@ -103,6 +111,8 @@ export function createVectorChannelsStore(initial?: StoreInit): VectorChannelsSt
     primaryVar: initial?.primaryVar ?? null,
     widthVar: initial?.widthVar ?? null,
     widthInvert: initial?.widthInvert ?? false,
+    uncertaintyVar: initial?.uncertaintyVar ?? null,
+    uncertaintyInvert: initial?.uncertaintyInvert ?? false,
     channels: initial?.channels ?? [],
     alerts: initial?.alerts ?? [],
     stateOverlay: initial?.stateOverlay ?? false,
@@ -122,6 +132,9 @@ export function createVectorChannelsStore(initial?: StoreInit): VectorChannelsSt
 
     setWidth: (id) => set({ widthVar: id }),
     setWidthInvert: (widthInvert) => set({ widthInvert }),
+
+    setUncertainty: (id) => set({ uncertaintyVar: id }),
+    setUncertaintyInvert: (uncertaintyInvert) => set({ uncertaintyInvert }),
 
     addChannel: (id) =>
       set((s) => {

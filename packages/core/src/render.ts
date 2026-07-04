@@ -76,6 +76,47 @@ export function computePrimaryWidths(
 }
 
 // ---------------------------------------------------------------------------
+// Primary channel uncertainty fade
+// ---------------------------------------------------------------------------
+
+/**
+ * Floor on the uncertainty fade. A maximally-uncertain segment drops to this
+ * alpha rather than 0 so the primary never fully disappears — a ghosted path
+ * still reads as "here, but don't trust it," whereas a gap reads as "no data."
+ */
+export const UNCERTAINTY_ALPHA_FLOOR = 0.12;
+
+/**
+ * Compute per-sample opacity for the primary channel from an uncertainty
+ * variable. High normalized value = high uncertainty = low alpha, mapping
+ * linearly from 1 (at range min) down to UNCERTAINTY_ALPHA_FLOOR (at range
+ * max). Optional invert suits a variable framed as confidence (high = good),
+ * where high should read as fully opaque.
+ *
+ * Samples with no uncertainty variable, or a null reading, stay fully opaque:
+ * absence of an uncertainty signal is not itself evidence of doubt.
+ */
+export function computeUncertaintyAlphas(
+  sampleCount: number,
+  uncertaintyValues: (number | null)[] | null,
+  uncertaintyVar: VariableDef | null,
+  uncertaintyInvert: boolean
+): number[] {
+  const alphas = new Array<number>(sampleCount);
+  for (let i = 0; i < sampleCount; i++) {
+    const v = uncertaintyValues?.[i];
+    if (uncertaintyVar && v != null) {
+      let t = normalize(v, uncertaintyVar.range);
+      if (uncertaintyInvert) t = 1 - t;
+      alphas[i] = 1 - t * (1 - UNCERTAINTY_ALPHA_FLOOR);
+    } else {
+      alphas[i] = 1;
+    }
+  }
+  return alphas;
+}
+
+// ---------------------------------------------------------------------------
 // Channels
 // ---------------------------------------------------------------------------
 
@@ -143,6 +184,12 @@ export interface PrimaryChannelArgs {
   widths: number[];
   colorValues?: (number | null)[] | null;
   colorVar?: VariableDef | null;
+  /**
+   * Per-sample opacity in [0, 1] for the fill (from computeUncertaintyAlphas).
+   * Omitted/null renders fully opaque. Applied to the fill only — the alert
+   * band always strokes at full opacity.
+   */
+  uncertaintyAlphas?: number[] | null;
   stateValues?: (string | undefined)[] | null;
   stateOverlay?: boolean;
   modes?: Record<string, ModeDef>;
@@ -210,6 +257,7 @@ export function drawPrimaryChannel(
     widths,
     colorValues,
     colorVar,
+    uncertaintyAlphas,
     stateValues,
     stateOverlay,
     modes,
@@ -261,6 +309,11 @@ export function drawPrimaryChannel(
         color = colorForValue((v1 + v2) / 2, colorVar.range, colorVar.ramp);
       }
     }
+    // Fade by the mean of the two endpoint alphas so the strip's opacity
+    // ramps as smoothly as its color does across a quad.
+    ctx.globalAlpha = uncertaintyAlphas
+      ? (uncertaintyAlphas[i] + uncertaintyAlphas[i + 1]) / 2
+      : 1;
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.moveTo(L[i].x, L[i].y);
@@ -270,6 +323,10 @@ export function drawPrimaryChannel(
     ctx.closePath();
     ctx.fill();
   }
+
+  // Restore full opacity: the alert band below, and every encoding drawn after
+  // the primary, must not inherit the fill's fade.
+  ctx.globalAlpha = 1;
 
   if (!hasAlerts) return;
 

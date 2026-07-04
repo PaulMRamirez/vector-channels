@@ -107,13 +107,24 @@ export interface ModeDef {
  * Render-time configuration. Role assignments reference VariableDef.id.
  *
  * Terminology: the "primary" channel is the central path; it carries the
- * color, width, and alert-band encodings. "Channels" are the parallel
- * offset lines, ordered from index 0 (tightest to the primary) outward.
+ * color, width, uncertainty-fade, and alert-band encodings. "Channels" are the
+ * parallel offset lines, ordered from index 0 (tightest to the primary) outward.
  */
 export interface RenderConfig {
   primaryVar: string | null;
   widthVar: string | null;
   widthInvert: boolean;
+  /**
+   * Variable whose value fades the primary strip's opacity — the "uncertainty"
+   * role. High value = low confidence = more transparent, so untrustworthy
+   * stretches (stale, interpolated, low-SNR) visibly recede. Independent of the
+   * color/width roles; any variable can drive it. Null = no fade (fully opaque).
+   * Deliberately does NOT dim the alert band: doubt about a reading must not
+   * mute a limit breach on that reading.
+   */
+  uncertaintyVar: string | null;
+  /** Flip the fade so a "confidence" variable (high = good) reads correctly. */
+  uncertaintyInvert: boolean;
   channels: string[]; // ordered list; index 0 is tightest to the primary
   /**
    * Watchlist of variable ids. Each watched variable contributes its limit

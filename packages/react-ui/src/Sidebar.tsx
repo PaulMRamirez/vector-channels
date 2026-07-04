@@ -51,6 +51,8 @@ export function Sidebar({
   const primaryVar = store((s) => s.primaryVar);
   const widthVar = store((s) => s.widthVar);
   const widthInvert = store((s) => s.widthInvert);
+  const uncertaintyVar = store((s) => s.uncertaintyVar);
+  const uncertaintyInvert = store((s) => s.uncertaintyInvert);
   const channels = store((s) => s.channels);
   const alerts = store((s) => s.alerts);
   const stateOverlay = store((s) => s.stateOverlay);
@@ -60,6 +62,8 @@ export function Sidebar({
   const setPrimary = store((s) => s.setPrimary);
   const setWidth = store((s) => s.setWidth);
   const setWidthInvert = store((s) => s.setWidthInvert);
+  const setUncertainty = store((s) => s.setUncertainty);
+  const setUncertaintyInvert = store((s) => s.setUncertaintyInvert);
   const addChannel = store((s) => s.addChannel);
   const removeChannel = store((s) => s.removeChannel);
   const moveChannel = store((s) => s.moveChannel);
@@ -73,6 +77,9 @@ export function Sidebar({
   const varById = new Map(variables.map((v) => [v.id, v]));
   const primaryVarDef = primaryVar ? varById.get(primaryVar) ?? null : null;
   const widthVarDef = widthVar ? varById.get(widthVar) ?? null : null;
+  const uncertaintyVarDef = uncertaintyVar
+    ? varById.get(uncertaintyVar) ?? null
+    : null;
 
   const addChannelOptions = variables.filter(
     (v) => v.id !== primaryVar && !channels.includes(v.id),
@@ -126,7 +133,7 @@ export function Sidebar({
         </button>
       </div>
       <div className="overflow-y-auto p-4 space-y-5">
-      <Section title="Primary channel" hint="color + width">
+      <Section title="Primary channel" hint="color · width · fade">
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="text-xs text-slate-500">Color</div>
@@ -182,6 +189,36 @@ export function Sidebar({
               </label>
             </div>
           ) : null}
+        </div>
+
+        <div className="space-y-2 pt-3">
+          <div className="text-xs text-slate-500">Fade by uncertainty</div>
+          <VarSelect
+            value={uncertaintyVar}
+            options={variables}
+            onChange={setUncertainty}
+            includeNone
+            noneLabel="(none)"
+          />
+          {uncertaintyVarDef ? (
+            <div className="flex items-center justify-between text-xs text-slate-500">
+              <span>certain → faded</span>
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="accent-slate-400"
+                  checked={uncertaintyInvert}
+                  onChange={(e) => setUncertaintyInvert(e.target.checked)}
+                />
+                confidence
+              </label>
+            </div>
+          ) : (
+            <div className="text-xs text-slate-600 italic">
+              Dims low-confidence stretches so untrusted data recedes. Alerts
+              stay full-strength.
+            </div>
+          )}
         </div>
       </Section>
 

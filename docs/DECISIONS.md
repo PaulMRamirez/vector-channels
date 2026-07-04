@@ -33,12 +33,13 @@ Essential. If channels offset in world coordinates, they'd appear closer togethe
 
 The consequence: tangents must be computed from projected screen points, not lat/lng. This is enforced in the `core` renderer.
 
-### Seven encoding channels, strictly orthogonal
+### Eight encoding channels, strictly orthogonal
 
 | Encoding | Carries | Geometric role |
 |---|---|---|
 | Primary color | One continuous variable | Fill color of the centerline strip |
 | Primary width | One continuous variable (typically quality) | Thickness of the strip |
+| Primary opacity | One continuous variable (uncertainty) | Fades the strip fill; leaves the alert band opaque |
 | Channels (ordered) | N continuous variables | Polylines offset from the primary |
 | Alerts (watchlist) | Worst-status across N watched variables | Stroke band beyond the channels, shown only on warn/critical segments |
 | State overlay | One discrete state series (overrides primary color) | Replaces primary color with mode color |
@@ -97,6 +98,21 @@ We prototyped a geometric fix for the self-intersection — a concave-side curva
 **What we kept from that work: the adaptive tangent window** (`computeTangents` `minSpanPx`, default 6). The window expands until its endpoints span a minimum pixel distance. This was not cosmetic — when a path is densely sampled relative to screen scale (zoomed out), a fixed ±3-*sample* window spans a sub-pixel distance and the finite-difference direction is dominated by floating-point noise, which threw the perpendicular offset into detached fragments. Widening the window to a minimum screen span fixes the direction estimate at the root; high zoom is unchanged because the samples already span more than the minimum.
 
 **Known limitation.** At extreme zoom-out a fixed-pixel band still self-overlaps at a sub-band-width hairpin. This is accepted as an honest artifact rather than papered over. The real fix, if it ever matters, is zoom-aware level-of-detail — fade or hide the band below a scale threshold, or indicate alerts on the primary itself — which is deferred (it also relates to the open question about Canvas performance and LOD at scale).
+
+### Primary opacity encodes uncertainty, not magnitude
+
+The primary strip had two encodings (color, width). We evaluated opacity as a third, via an interactive prototype rendered over a deliberately uneven basemap (light dunes, dark craters). Two candidate meanings were tested:
+
+- **Magnitude (rejected).** Fading the strip by the primary variable's own value fails on a map. Alpha blends the strip against whatever is underneath, so the *same* value reads darker over a crater than over a dune — the basemap bleeds into the reading. For a tool whose entire job is honest spatial correlation, an encoding that isn't background-independent is a hazard, not a feature. The prototype made this visible rather than hypothetical.
+- **Uncertainty (chosen).** Low alpha universally reads as "less certain / not fully there." Rather than fight that connotation, we lean into it: opacity fades stretches where the reading is untrustworthy (stale, interpolated, low-SNR, poor localization). This carries a meaning no other encoding carries, and it is orthogonal to color and width by construction.
+
+Rules that keep it non-competing (principle 1):
+
+1. **The alert band never fades.** Doubt about a *reading* must not mute a *limit breach* on that reading. The fill's `globalAlpha` is reset before the band strokes.
+2. **A floor, not zero** (`UNCERTAINTY_ALPHA_FLOOR = 0.12`). A maximally-uncertain segment ghosts but never vanishes: a faint strip reads as "here, but don't trust it," whereas a true gap reads as "no data." The two must stay distinguishable.
+3. **Absent signal is not doubt.** Samples with no uncertainty variable, or a null reading, render fully opaque.
+
+Implementation mirrors the width role: `RenderConfig.uncertaintyVar` / `uncertaintyInvert` (invert suits a variable framed as *confidence*, high = good), a pure `computeUncertaintyAlphas` cached per config, applied as per-quad fill alpha in `drawPrimaryChannel`. This is the first application of the "new visual variable as an independent role" pattern beyond width; motion (flow animation) is the next candidate under evaluation, tracked separately.
 
 ## Technical choices
 
